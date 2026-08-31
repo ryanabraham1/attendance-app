@@ -1,0 +1,39 @@
+import Link from "next/link";
+import { BarChart3, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { logout } from "@/app/actions";
+
+const links = [
+  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
+  { href: "/practices", label: "Practices", icon: CalendarDays },
+  { href: "/members", label: "Members", icon: Users },
+  { href: "/reports", label: "Reports", icon: BarChart3 },
+];
+
+export function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="app-shell">
+      <aside className="sidebar">
+        <Link href="/dashboard" className="brand" aria-label="Pitboard overview">
+          <span className="brand-mark"><ClipboardCheck size={22} /></span>
+          <span><strong>PITBOARD</strong><small>TEAM 3256</small></span>
+        </Link>
+        <nav aria-label="Main navigation">
+          {links.map(({ href, label, icon: Icon }) => (
+            <Link href={href} key={href}><Icon size={18} aria-hidden="true" /><span>{label}</span></Link>
+          ))}
+        </nav>
+        <div className="sidebar-foot">
+          <p><span className="live-dot" />Lead session</p>
+          <form action={logout}><button type="submit"><LogOut size={16} />Sign out</button></form>
+        </div>
+      </aside>
+      <main className="app-main">{children}</main>
+      <nav className="mobile-nav" aria-label="Mobile navigation">
+        {links.map(({ href, label, icon: Icon }) => (
+          <Link href={href} key={href}><Icon size={19} aria-hidden="true" /><span>{label}</span></Link>
+        ))}
+      </nav>
+    </div>
+  );
+}
+

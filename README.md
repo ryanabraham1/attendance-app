@@ -12,11 +12,12 @@ Pitboard is the lead-operated attendance app for WarriorBorgs Team 3256. Leads c
 
 ## Local setup
 
-1. Copy `.env.example` to `.env.local` and fill in the three values.
-2. Run `npm run db:migrate`.
-3. Optionally run `npm run db:seed` for four fictional members.
-4. Run `npm run dev`.
+1. Create a Supabase project.
+2. Run the SQL in `supabase/migrations/` using the Supabase SQL Editor (or link the Supabase CLI and run `supabase db push`).
+3. Copy `.env.example` to `.env.local` and fill in the four values.
+4. Optionally run `npm run db:seed` for four fictional members.
+5. Run `npm run dev`.
 
 ## Production
 
-The app is designed for Vercel with a serverless Postgres `DATABASE_URL`. `LEAD_ACCESS_CODE` and `SESSION_SECRET` must remain server-only environment variables.
+The app is designed for Vercel and the official Supabase JavaScript client. `SUPABASE_SECRET_KEY`, `LEAD_ACCESS_CODE`, and `SESSION_SECRET` must remain server-only environment variables and must never use the `NEXT_PUBLIC_` prefix.

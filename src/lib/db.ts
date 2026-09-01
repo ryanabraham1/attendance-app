@@ -1,170 +1,220 @@
 import "server-only";
 
-import { neon, type NeonQueryFunction } from "@neondatabase/serverless";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { AttendanceEntry, Member, Practice } from "@/lib/types";
 
-let client: NeonQueryFunction<false, false> | null = null;
+let client: SupabaseClient | null = null;
 
 function database() {
-  if (!process.env.DATABASE_URL) {
-    throw new Error("DATABASE_URL is not configured.");
+  const url = process.env.SUPABASE_URL;
+  const secretKey = process.env.SUPABASE_SECRET_KEY;
+  if (!url || !secretKey) {
+    throw new Error("SUPABASE_URL and SUPABASE_SECRET_KEY must be configured.");
   }
-  client ??= neon(process.env.DATABASE_URL);
+  client ??= createClient(url, secretKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
   return client;
 }
 
+function resultOrThrow<T>(result: { data: T | null; error: { message: string } | null }) {
+  if (result.error) throw new Error(`Supabase query failed: ${result.error.message}`);
+  if (result.data === null) throw new Error("Supabase query returned no data.");
+  return result.data;
+}
+
 export async function listMembers(includeInactive = false) {
-  const sql = database();
-  return (await sql`
-    select id, name, group_name, role, active, created_at
-    from members
-    where ${includeInactive} or active = true
-    order by active desc, name asc
-  `) as Member[];
+  let query = database()
+    .from("members")
+    .select("id,name,group_name,role,active,created_at")
+    .order("active", { ascending: false })
+    .order("name", { ascending: true });
+  if (!includeInactive) query = query.eq("active", true);
+  return resultOrThrow(await query) as Member[];
 }
 
 export async function listPractices() {
-  const sql = database();
-  return (await sql`
-    select id, title, starts_at, focus, created_at
-    from practices
-    order by starts_at desc
-  `) as Practice[];
+  const result = await database()
+    .from("practices")
+    .select("id,title,starts_at,focus,created_at")
+    .order("starts_at", { ascending: false });
+  return resultOrThrow(result) as Practice[];
 }
 
 export async function getPractice(id: string) {
-  const sql = database();
-  const rows = (await sql`
-    select id, title, starts_at, focus, created_at
-    from practices where id = ${id} limit 1
-  `) as Practice[];
-  return rows[0] ?? null;
+  const result = await database()
+    .from("practices")
+    .select("id,title,starts_at,focus,created_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (result.error) throw new Error(`Supabase query failed: ${result.error.message}`);
+  return result.data as Practice | null;
 }
 
 export async function getAttendanceForPractice(practiceId: string) {
-  const sql = database();
-  return (await sql`
-    select member_id, status, note
-    from attendance where practice_id = ${practiceId}
-  `) as AttendanceEntry[];
+  const result = await database()
+    .from("attendance")
+    .select("member_id,status,note")
+    .eq("practice_id", practiceId);
+  return resultOrThrow(result) as AttendanceEntry[];
 }
 
 export async function createMember(input: { name: string; group: string; role: string }) {
-  const sql = database();
-  await sql`
-    insert into members (name, group_name, role)
-    values (${input.name}, ${input.group}, ${input.role})
-  `;
+  const result = await database().from("members").insert({
+    name: input.name,
+    group_name: input.group,
+    role: input.role,
+  });
+  if (result.error) throw new Error(`Could not create member: ${result.error.message}`);
 }
 
 export async function setMemberActive(id: string, active: boolean) {
-  const sql = database();
-  await sql`update members set active = ${active} where id = ${id}`;
+  const result = await database().from("members").update({ active }).eq("id", id);
+  if (result.error) throw new Error(`Could not update member: ${result.error.message}`);
 }
 
 export async function createPractice(input: { title: string; startsAt: string; focus: string }) {
-  const sql = database();
-  const rows = (await sql`
-    insert into practices (title, starts_at, focus)
-    values (${input.title}, ${input.startsAt}, ${input.focus})
-    returning id
-  `) as { id: string }[];
-  return rows[0].id;
+  const result = await database()
+    .from("practices")
+    .insert({ title: input.title, starts_at: input.startsAt, focus: input.focus })
+    .select("id")
+    .single();
+  return resultOrThrow(result).id as string;
 }
 
 export async function savePracticeAttendance(practiceId: string, entries: AttendanceEntry[]) {
-  const sql = database();
-  await sql.transaction(
-    entries.map((entry) => sql`
-      insert into attendance (practice_id, member_id, status, note, checked_at)
-      values (${practiceId}, ${entry.member_id}, ${entry.status}, ${entry.note}, now())
-      on conflict (practice_id, member_id)
-      do update set status = excluded.status, note = excluded.note, checked_at = now()
-    `),
-  );
+  const now = new Date().toISOString();
+  const rows = entries.map((entry) => ({
+    practice_id: practiceId,
+    member_id: entry.member_id,
+    status: entry.status,
+    note: entry.note,
+    checked_at: now,
+  }));
+  const result = await database()
+    .from("attendance")
+    .upsert(rows, { onConflict: "practice_id,member_id" });
+  if (result.error) throw new Error(`Could not save attendance: ${result.error.message}`);
 }
 
+type JoinedAttendance = {
+  member_id: string;
+  practice_id: string;
+  status: AttendanceEntry["status"];
+  note: string;
+  members: { id: string; name: string; group_name: string } | null;
+  practices: { id: string; title: string; starts_at: string } | null;
+};
+
 export async function getDashboardData() {
-  const sql = database();
-  const [counts, recentPractices, missing, attention] = await Promise.all([
-    sql`
-      select
-        (select count(*)::int from members where active) as active_members,
-        (select count(*)::int from practices) as practices,
-        coalesce(round(100.0 * sum(case when a.status in ('present','late') then 1 else 0 end)
-          / nullif(sum(case when a.status in ('present','late','absent') then 1 else 0 end), 0), 0), 0)::int as team_rate
-      from attendance a
-    `,
-    sql`
-      select p.id, p.title, p.starts_at, p.focus,
-        count(a.member_id)::int as marked,
-        count(*) filter (where a.status = 'present')::int as present,
-        count(*) filter (where a.status = 'late')::int as late,
-        count(*) filter (where a.status = 'excused')::int as excused,
-        count(*) filter (where a.status = 'absent')::int as absent
-      from practices p
-      left join attendance a on a.practice_id = p.id
-      group by p.id
-      order by p.starts_at desc
-      limit 5
-    `,
-    sql`
-      select m.id, m.name, m.group_name, p.id as practice_id, p.title, p.starts_at, a.note
-      from attendance a
-      join members m on m.id = a.member_id
-      join practices p on p.id = a.practice_id
-      where a.status = 'absent'
-      order by p.starts_at desc, m.name
-      limit 8
-    `,
-    sql`
-      select m.id, m.name, m.group_name,
-        count(*) filter (where a.status = 'absent')::int as absences,
-        count(*) filter (where a.status = 'late')::int as lates,
-        coalesce(round(100.0 * count(*) filter (where a.status in ('present','late'))
-          / nullif(count(*) filter (where a.status in ('present','late','absent')), 0), 0), 100)::int as rate
-      from members m
-      join attendance a on a.member_id = m.id
-      where m.active
-      group by m.id
-      having count(*) filter (where a.status = 'absent') > 0
-      order by rate asc, absences desc, m.name
-      limit 6
-    `,
+  const db = database();
+  const [membersResult, practicesResult, attendanceResult, countResult] = await Promise.all([
+    db.from("members").select("id,name,group_name").eq("active", true).order("name"),
+    db.from("practices").select("id,title,starts_at,focus,created_at").order("starts_at", { ascending: false }).limit(5),
+    db.from("attendance").select("member_id,practice_id,status,note,members(id,name,group_name),practices(id,title,starts_at)"),
+    db.from("practices").select("id", { count: "exact", head: true }),
   ]);
 
+  const members = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string }>;
+  const practices = resultOrThrow(practicesResult) as Practice[];
+  const attendance = resultOrThrow(attendanceResult) as unknown as JoinedAttendance[];
+  if (countResult.error) throw new Error(`Supabase query failed: ${countResult.error.message}`);
+
+  const eligible = attendance.filter((entry) => ["present", "late", "absent"].includes(entry.status));
+  const attended = eligible.filter((entry) => entry.status === "present" || entry.status === "late").length;
+  const teamRate = eligible.length ? Math.round((attended / eligible.length) * 100) : 0;
+
+  const recentPractices = practices.map((practice) => {
+    const entries = attendance.filter((entry) => entry.practice_id === practice.id);
+    return {
+      ...practice,
+      marked: entries.length,
+      present: entries.filter((entry) => entry.status === "present").length,
+      late: entries.filter((entry) => entry.status === "late").length,
+      excused: entries.filter((entry) => entry.status === "excused").length,
+      absent: entries.filter((entry) => entry.status === "absent").length,
+    };
+  });
+
+  const missing = attendance
+    .filter((entry) => entry.status === "absent" && entry.members && entry.practices)
+    .sort((a, b) => new Date(b.practices!.starts_at).getTime() - new Date(a.practices!.starts_at).getTime())
+    .slice(0, 8)
+    .map((entry) => ({
+      id: entry.members!.id,
+      name: entry.members!.name,
+      group_name: entry.members!.group_name,
+      practice_id: entry.practices!.id,
+      title: entry.practices!.title,
+      starts_at: entry.practices!.starts_at,
+      note: entry.note,
+    }));
+
+  const attention = members
+    .map((member) => {
+      const entries = attendance.filter((entry) => entry.member_id === member.id);
+      const rated = entries.filter((entry) => ["present", "late", "absent"].includes(entry.status));
+      const present = rated.filter((entry) => entry.status === "present" || entry.status === "late").length;
+      return {
+        ...member,
+        absences: entries.filter((entry) => entry.status === "absent").length,
+        lates: entries.filter((entry) => entry.status === "late").length,
+        rate: rated.length ? Math.round((present / rated.length) * 100) : 100,
+      };
+    })
+    .filter((member) => member.absences > 0)
+    .sort((a, b) => a.rate - b.rate || b.absences - a.absences || a.name.localeCompare(b.name))
+    .slice(0, 6);
+
   return {
-    counts: (counts as { active_members: number; practices: number; team_rate: number }[])[0],
-    recentPractices: recentPractices as Array<Practice & { marked: number; present: number; late: number; excused: number; absent: number }>,
-    missing: missing as Array<{ id: string; name: string; group_name: string; practice_id: string; title: string; starts_at: string; note: string }>,
-    attention: attention as Array<{ id: string; name: string; group_name: string; absences: number; lates: number; rate: number }>,
+    counts: { active_members: members.length, practices: countResult.count ?? 0, team_rate: teamRate },
+    recentPractices,
+    missing,
+    attention,
   };
 }
 
-export async function getMemberReports() {
-  const sql = database();
-  return (await sql`
-    select m.id, m.name, m.group_name, m.role,
-      count(a.*)::int as recorded,
-      count(*) filter (where a.status = 'present')::int as present,
-      count(*) filter (where a.status = 'late')::int as late,
-      count(*) filter (where a.status = 'excused')::int as excused,
-      count(*) filter (where a.status = 'absent')::int as absent,
-      coalesce(round(100.0 * count(*) filter (where a.status in ('present','late'))
-        / nullif(count(*) filter (where a.status in ('present','late','absent')), 0), 0), 100)::int as rate,
-      coalesce(json_agg(json_build_object(
-        'title', p.title, 'starts_at', p.starts_at, 'status', a.status, 'note', a.note
-      ) order by p.starts_at desc) filter (where a.status in ('absent','late')), '[]') as exceptions
-    from members m
-    left join attendance a on a.member_id = m.id
-    left join practices p on p.id = a.practice_id
-    where m.active
-    group by m.id
-    order by rate asc, m.name
-  `) as Array<{
-    id: string; name: string; group_name: string; role: string; recorded: number;
-    present: number; late: number; excused: number; absent: number; rate: number;
-    exceptions: Array<{ title: string; starts_at: string; status: string; note: string }>;
-  }>;
-}
+type ReportAttendance = {
+  member_id: string;
+  status: AttendanceEntry["status"];
+  note: string;
+  practices: { title: string; starts_at: string } | null;
+};
 
+export async function getMemberReports() {
+  const db = database();
+  const [membersResult, attendanceResult] = await Promise.all([
+    db.from("members").select("id,name,group_name,role").eq("active", true).order("name"),
+    db.from("attendance").select("member_id,status,note,practices(title,starts_at)"),
+  ]);
+  const members = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string; role: string }>;
+  const attendance = resultOrThrow(attendanceResult) as unknown as ReportAttendance[];
+
+  return members.map((member) => {
+    const entries = attendance.filter((entry) => entry.member_id === member.id);
+    const rated = entries.filter((entry) => ["present", "late", "absent"].includes(entry.status));
+    const attended = rated.filter((entry) => entry.status === "present" || entry.status === "late").length;
+    return {
+      ...member,
+      recorded: entries.length,
+      present: entries.filter((entry) => entry.status === "present").length,
+      late: entries.filter((entry) => entry.status === "late").length,
+      excused: entries.filter((entry) => entry.status === "excused").length,
+      absent: entries.filter((entry) => entry.status === "absent").length,
+      rate: rated.length ? Math.round((attended / rated.length) * 100) : 100,
+      exceptions: entries
+        .filter((entry) => (entry.status === "absent" || entry.status === "late") && entry.practices)
+        .sort((a, b) => new Date(b.practices!.starts_at).getTime() - new Date(a.practices!.starts_at).getTime())
+        .map((entry) => ({
+          title: entry.practices!.title,
+          starts_at: entry.practices!.starts_at,
+          status: entry.status,
+          note: entry.note,
+        })),
+    };
+  }).sort((a, b) => a.rate - b.rate || a.name.localeCompare(b.name));
+}

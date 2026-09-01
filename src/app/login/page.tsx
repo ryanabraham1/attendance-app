@@ -9,7 +9,8 @@ export default async function LoginPage() {
   return <main className="login-page">
     <section className="login-panel">
       <p className="login-kicker">Team 3256</p>
-      <h1>Enter the code</h1>
+      <h1>Pick your crew</h1>
+      <p className="login-intro">Choose the roster you are checking in, then use the shared lead code.</p>
       <LoginForm />
     </section>
   </main>;

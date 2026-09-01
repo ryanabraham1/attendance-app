@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createLeadSession, deleteLeadSession, matchesLeadCode, requireLead } from "@/lib/auth";
+import { authenticateLeadCode, createLeadSession, deleteLeadSession, requireLead, scopedGroup } from "@/lib/auth";
 import {
   createMember as insertMember,
   createPractice as insertPractice,
@@ -11,16 +11,22 @@ import {
   savePracticeAttendance,
   setMemberActive,
 } from "@/lib/db";
-import { ATTENDANCE_STATUSES } from "@/lib/types";
+import { ATTENDANCE_STATUSES, LEAD_GROUPS } from "@/lib/types";
 
 export type LoginState = { error: string };
 
 export async function login(_: LoginState, formData: FormData): Promise<LoginState> {
-  const result = z.object({ code: z.string().min(1) }).safeParse({ code: formData.get("code") });
-  if (!result.success || !matchesLeadCode(result.data.code)) {
-    return { error: "That access code does not match. Ask a team admin for the current lead code." };
+  const result = z.object({
+    code: z.string().min(1),
+    group: z.union([z.enum(LEAD_GROUPS), z.literal("all")]),
+  }).safeParse({ code: formData.get("code"), group: formData.get("group") });
+  const session = result.success
+    ? authenticateLeadCode(result.data.code, result.data.group === "all" ? null : result.data.group)
+    : null;
+  if (!session) {
+    return { error: "That code does not match. Ask a team admin for the current code." };
   }
-  await createLeadSession();
+  await createLeadSession(session);
   redirect("/dashboard");
 }
 
@@ -30,7 +36,7 @@ export async function logout() {
 }
 
 export async function addMember(formData: FormData) {
-  await requireLead();
+  const session = await requireLead();
   const result = z.object({
     name: z.string().trim().min(2).max(80),
     group: z.string().trim().min(2).max(60),
@@ -41,26 +47,30 @@ export async function addMember(formData: FormData) {
     role: formData.get("role"),
   });
   if (!result.success) throw new Error("Enter a name, subteam, and role.");
-  await insertMember(result.data);
+  await insertMember({ ...result.data, group: scopedGroup(session) ?? result.data.group });
   revalidatePath("/dashboard");
   revalidatePath("/members");
 }
 
 export async function changeMemberStatus(formData: FormData) {
-  await requireLead();
+  const session = await requireLead();
   const result = z.object({
     id: z.string().uuid(),
     active: z.enum(["true", "false"]),
   }).safeParse({ id: formData.get("id"), active: formData.get("active") });
   if (!result.success) throw new Error("Invalid member update.");
+  const allowedMembers = await listMembers(true, scopedGroup(session));
+  if (!allowedMembers.some((member) => member.id === result.data.id)) {
+    throw new Error("You can only manage members in your subteam.");
+  }
   await setMemberActive(result.data.id, result.data.active === "true");
   revalidatePath("/members");
   revalidatePath("/dashboard");
 }
 
 export async function addPractice() {
-  await requireLead();
-  const members = await listMembers();
+  const session = await requireLead();
+  const members = await listMembers(false, scopedGroup(session));
   const id = await insertPractice({ title: "Practice", startsAt: new Date().toISOString(), focus: "" });
   if (members.length) {
     await savePracticeAttendance(id, members.map((member) => ({
@@ -82,11 +92,17 @@ const attendancePayload = z.array(z.object({
 })).min(1);
 
 export async function saveAttendance(practiceId: string, payload: string) {
-  await requireLead();
+  const session = await requireLead();
   const id = z.string().uuid().parse(practiceId);
   const entries = attendancePayload.parse(JSON.parse(payload));
   if (new Set(entries.map((entry) => entry.member_id)).size !== entries.length) {
     throw new Error("Duplicate roster entries are not allowed.");
+  }
+  const allowedMemberIds = new Set(
+    (await listMembers(false, scopedGroup(session))).map((member) => member.id),
+  );
+  if (entries.some((entry) => !allowedMemberIds.has(entry.member_id))) {
+    throw new Error("You can only save attendance for active members in your subteam.");
   }
   await savePracticeAttendance(id, entries);
   revalidatePath("/dashboard");

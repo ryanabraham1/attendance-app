@@ -2,19 +2,22 @@ import Link from "next/link";
 import { ArrowRight, CalendarPlus, CheckCircle2, ClipboardCheck, TriangleAlert, UserX, Users } from "lucide-react";
 import { addPractice } from "@/app/actions";
 import { SubmitButton } from "@/components/submit-button";
+import { requireLead, scopedGroup } from "@/lib/auth";
 import { getDashboardData } from "@/lib/db";
 import { formatPracticeDate } from "@/lib/format";
 
 export const metadata = { title: "Overview" };
 
 export default async function DashboardPage() {
-  const data = await getDashboardData();
+  const session = await requireLead();
+  const group = scopedGroup(session);
+  const data = await getDashboardData(group);
   const latest = data.recentPractices[0];
   return <div className="page-wrap">
-    <header className="page-header split-header"><div><p className="eyebrow">Lead overview</p><h1>Who needs a follow-up?</h1><p>Attendance exceptions first. Team-wide numbers second.</p></div><form action={addPractice}><SubmitButton pendingText="Starting…"><CalendarPlus size={17} />Start practice</SubmitButton></form></header>
+    <header className="page-header split-header"><div><p className="eyebrow">{group ? `${group} lead view` : "Lead overview"}</p><h1>Who needs a follow-up?</h1><p>{group ? `Only ${group} members are shown and editable.` : "Attendance exceptions first. Team-wide numbers second."}</p></div><form action={addPractice}><SubmitButton pendingText="Starting…"><CalendarPlus size={17} />Start practice</SubmitButton></form></header>
 
     {data.counts.active_members === 0 ? <section className="empty-callout"><Users size={28} /><div><h2>Build your roster first</h2><p>Add team members, then create a practice and start checking people in.</p></div><Link href="/members" className="button button-secondary">Add members<ArrowRight size={16} /></Link></section> : <section className="stat-strip" aria-label="Team attendance summary">
-      <div className="stat-primary"><span className="stat-value">{data.counts.team_rate}%</span><span><strong>team attendance</strong><small>Excused absences excluded</small></span></div>
+      <div className="stat-primary"><span className="stat-value">{data.counts.team_rate}%</span><span><strong>{group ? `${group} attendance` : "team attendance"}</strong><small>Excused absences excluded</small></span></div>
       <div><Users size={18} /><span><strong>{data.counts.active_members}</strong><small>Active members</small></span></div>
       <div><ClipboardCheck size={18} /><span><strong>{data.counts.practices}</strong><small>Practices tracked</small></span></div>
       <div><UserX size={18} /><span><strong>{data.missing.length}</strong><small>Recent misses</small></span></div>

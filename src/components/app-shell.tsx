@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BarChart3, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, Users } from "lucide-react";
 import { logout } from "@/app/actions";
+import type { LeadSession } from "@/lib/auth";
 
 const links = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -9,7 +10,8 @@ const links = [
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, session }: { children: React.ReactNode; session: LeadSession }) {
+  const sessionLabel = session.role === "admin" ? "All-team admin" : `${session.group} lead`;
   return (
     <div className="app-shell">
       <aside className="sidebar">
@@ -23,7 +25,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <p><span className="live-dot" />Lead session</p>
+          <p><span className="live-dot" />{sessionLabel}</p>
           <form action={logout}><button type="submit"><LogOut size={16} />Sign out</button></form>
         </div>
       </aside>

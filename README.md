@@ -1,6 +1,6 @@
 # Attendance
 
-Attendance is the lead-operated attendance app for WarriorBorgs Team 3256. Leads create practices and mark the full roster; members do not need accounts.
+Attendance is the lead-operated attendance app for WarriorBorgs Team 3256. Leads use one shared code, choose their subteam, and only see that roster; the All team option keeps the full admin view. Members do not need accounts.
 
 ## What it tracks
 

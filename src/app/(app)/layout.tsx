@@ -4,6 +4,6 @@ import { requireLead } from "@/lib/auth";
 export const dynamic = "force-dynamic";
 
 export default async function ProtectedLayout({ children }: { children: React.ReactNode }) {
-  await requireLead();
-  return <AppShell>{children}</AppShell>;
+  const session = await requireLead();
+  return <AppShell session={session}>{children}</AppShell>;
 }

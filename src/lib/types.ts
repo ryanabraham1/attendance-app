@@ -1,6 +1,9 @@
 export const ATTENDANCE_STATUSES = ["present", "late", "excused", "absent"] as const;
 export type AttendanceStatus = (typeof ATTENDANCE_STATUSES)[number];
 
+export const LEAD_GROUPS = ["Design", "Fab", "Software", "Electrical", "Business"] as const;
+export type LeadGroup = (typeof LEAD_GROUPS)[number];
+
 export type Member = {
   id: string;
   name: string;
@@ -23,4 +26,3 @@ export type AttendanceEntry = {
   status: AttendanceStatus;
   note: string;
 };
-

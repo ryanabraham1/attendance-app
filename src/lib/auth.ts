@@ -4,12 +4,13 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { timingSafeEqual } from "node:crypto";
+import { LEAD_GROUPS, type LeadGroup } from "@/lib/types";
 
 const COOKIE_NAME = "pitboard_session";
 
 export type LeadSession =
   | { role: "admin"; group: null }
-  | { role: "subteam"; group: string };
+  | { role: "subteam"; group: LeadGroup };
 
 function secret() {
   const value = process.env.SESSION_SECRET;
@@ -26,34 +27,10 @@ function codesMatch(value: string, expected: string) {
   return inputBuffer.length === expectedBuffer.length && timingSafeEqual(inputBuffer, expectedBuffer);
 }
 
-function subteamCodes() {
-  const value = process.env.SUBTEAM_LEAD_CODES;
-  if (!value) return [];
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(value);
-  } catch {
-    throw new Error("SUBTEAM_LEAD_CODES must be a JSON object that maps subteam names to access codes.");
-  }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("SUBTEAM_LEAD_CODES must be a JSON object that maps subteam names to access codes.");
-  }
-
-  return Object.entries(parsed).map(([group, code]) => {
-    if (!group.trim() || typeof code !== "string" || !code.trim()) {
-      throw new Error("Every SUBTEAM_LEAD_CODES entry needs a subteam name and a non-empty code.");
-    }
-    return { group: group.trim(), code: code.trim() };
-  });
-}
-
-export function authenticateLeadCode(value: string): LeadSession | null {
+export function authenticateLeadCode(value: string, group: LeadGroup | null): LeadSession | null {
   const adminCode = process.env.LEAD_ACCESS_CODE;
-  if (adminCode && codesMatch(value, adminCode)) return { role: "admin", group: null };
-
-  const match = subteamCodes().find(({ code }) => codesMatch(value, code));
-  return match ? { role: "subteam", group: match.group } : null;
+  if (!adminCode || !codesMatch(value, adminCode)) return null;
+  return group ? { role: "subteam", group } : { role: "admin", group: null };
 }
 
 export async function createLeadSession(session: LeadSession) {
@@ -78,8 +55,8 @@ export async function getLeadSession(): Promise<LeadSession | null> {
   try {
     const { payload } = await jwtVerify(token, secret());
     if (payload.role === "admin") return { role: "admin", group: null };
-    if (payload.role === "subteam" && typeof payload.group === "string" && payload.group) {
-      return { role: "subteam", group: payload.group };
+    if (payload.role === "subteam" && LEAD_GROUPS.some((group) => group === payload.group)) {
+      return { role: "subteam", group: payload.group as LeadGroup };
     }
     return null;
   } catch {

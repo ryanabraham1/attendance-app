@@ -13,9 +13,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link href="/dashboard" className="brand" aria-label="Pitboard overview">
+        <Link href="/dashboard" className="brand" aria-label="Attendance overview">
           <span className="brand-mark"><ClipboardCheck size={22} /></span>
-          <span><strong>PITBOARD</strong><small>TEAM 3256</small></span>
+          <span><strong>ATTENDANCE</strong><small>TEAM 3256</small></span>
         </Link>
         <nav aria-label="Main navigation">
           {links.map(({ href, label, icon: Icon }) => (
@@ -36,4 +36,3 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

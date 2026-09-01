@@ -1,6 +1,6 @@
-# Pitboard
+# Attendance
 
-Pitboard is the lead-operated attendance app for WarriorBorgs Team 3256. Leads create practices and mark the full roster; members do not need accounts.
+Attendance is the lead-operated attendance app for WarriorBorgs Team 3256. Leads create practices and mark the full roster; members do not need accounts.
 
 ## What it tracks
 

@@ -27,13 +27,14 @@ function resultOrThrow<T>(result: { data: T | null; error: { message: string } |
   return result.data;
 }
 
-export async function listMembers(includeInactive = false) {
+export async function listMembers(includeInactive = false, groupName?: string) {
   let query = database()
     .from("members")
     .select("id,name,group_name,role,active,created_at")
     .order("active", { ascending: false })
     .order("name", { ascending: true });
   if (!includeInactive) query = query.eq("active", true);
+  if (groupName) query = query.eq("group_name", groupName);
   return resultOrThrow(await query) as Member[];
 }
 
@@ -55,12 +56,17 @@ export async function getPractice(id: string) {
   return result.data as Practice | null;
 }
 
-export async function getAttendanceForPractice(practiceId: string) {
-  const result = await database()
+export async function getAttendanceForPractice(practiceId: string, groupName?: string) {
+  let query = database()
     .from("attendance")
     .select("member_id,status,note")
     .eq("practice_id", practiceId);
-  return resultOrThrow(result) as AttendanceEntry[];
+  if (groupName) {
+    const members = await listMembers(true, groupName);
+    if (!members.length) return [];
+    query = query.in("member_id", members.map((member) => member.id));
+  }
+  return resultOrThrow(await query) as AttendanceEntry[];
 }
 
 export async function createMember(input: { name: string; group: string; role: string }) {
@@ -110,7 +116,7 @@ type JoinedAttendance = {
   practices: { id: string; title: string; starts_at: string } | null;
 };
 
-export async function getDashboardData() {
+export async function getDashboardData(groupName?: string) {
   const db = database();
   const [membersResult, practicesResult, attendanceResult, countResult] = await Promise.all([
     db.from("members").select("id,name,group_name").eq("active", true).order("name"),
@@ -119,9 +125,13 @@ export async function getDashboardData() {
     db.from("practices").select("id", { count: "exact", head: true }),
   ]);
 
-  const members = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string }>;
+  const allMembers = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string }>;
+  const members = groupName ? allMembers.filter((member) => member.group_name === groupName) : allMembers;
   const practices = resultOrThrow(practicesResult) as Practice[];
-  const attendance = resultOrThrow(attendanceResult) as unknown as JoinedAttendance[];
+  const allAttendance = resultOrThrow(attendanceResult) as unknown as JoinedAttendance[];
+  const attendance = groupName
+    ? allAttendance.filter((entry) => entry.members?.group_name === groupName)
+    : allAttendance;
   if (countResult.error) throw new Error(`Supabase query failed: ${countResult.error.message}`);
 
   const eligible = attendance.filter((entry) => ["present", "late", "absent"].includes(entry.status));
@@ -185,14 +195,17 @@ type ReportAttendance = {
   practices: { title: string; starts_at: string } | null;
 };
 
-export async function getMemberReports() {
+export async function getMemberReports(groupName?: string) {
   const db = database();
   const [membersResult, attendanceResult] = await Promise.all([
     db.from("members").select("id,name,group_name,role").eq("active", true).order("name"),
     db.from("attendance").select("member_id,status,note,practices(title,starts_at)"),
   ]);
-  const members = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string; role: string }>;
-  const attendance = resultOrThrow(attendanceResult) as unknown as ReportAttendance[];
+  const allMembers = resultOrThrow(membersResult) as Array<{ id: string; name: string; group_name: string; role: string }>;
+  const members = groupName ? allMembers.filter((member) => member.group_name === groupName) : allMembers;
+  const memberIds = new Set(members.map((member) => member.id));
+  const attendance = (resultOrThrow(attendanceResult) as unknown as ReportAttendance[])
+    .filter((entry) => memberIds.has(entry.member_id));
 
   return members.map((member) => {
     const entries = attendance.filter((entry) => entry.member_id === member.id);

@@ -98,7 +98,7 @@ export function AttendanceBoard({ practiceId, members, existing }: {
             </div>
             <div className="status-options" role="group" aria-label={`Attendance for ${member.name}`}>
               {options.map(({ value, label, icon: Icon }) => (
-                <button type="button" key={value} className={entries[member.id].status === value ? `selected ${value}` : value} onClick={() => updateStatus(member.id, value)}>
+                <button type="button" key={value} aria-pressed={entries[member.id].status === value} className={entries[member.id].status === value ? `selected ${value}` : value} onClick={() => updateStatus(member.id, value)}>
                   <Icon size={15} aria-hidden="true" />{label}
                 </button>
               ))}

@@ -65,7 +65,7 @@ export async function addPractice() {
   if (members.length) {
     await savePracticeAttendance(id, members.map((member) => ({
       member_id: member.id,
-      status: "present",
+      status: "absent",
       note: "",
     })));
   }

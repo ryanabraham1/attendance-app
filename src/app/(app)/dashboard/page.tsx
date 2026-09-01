@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, CalendarPlus, CheckCircle2, ClipboardCheck, TriangleAlert, UserX, Users } from "lucide-react";
+import { addPractice } from "@/app/actions";
+import { SubmitButton } from "@/components/submit-button";
 import { getDashboardData } from "@/lib/db";
 import { formatPracticeDate } from "@/lib/format";
 
@@ -9,7 +11,7 @@ export default async function DashboardPage() {
   const data = await getDashboardData();
   const latest = data.recentPractices[0];
   return <div className="page-wrap">
-    <header className="page-header split-header"><div><p className="eyebrow">Lead overview</p><h1>Who needs a follow-up?</h1><p>Attendance exceptions first. Team-wide numbers second.</p></div><Link className="button button-primary" href="/practices"><CalendarPlus size={17} />New practice</Link></header>
+    <header className="page-header split-header"><div><p className="eyebrow">Lead overview</p><h1>Who needs a follow-up?</h1><p>Attendance exceptions first. Team-wide numbers second.</p></div><form action={addPractice}><SubmitButton pendingText="Starting…"><CalendarPlus size={17} />Start practice</SubmitButton></form></header>
 
     {data.counts.active_members === 0 ? <section className="empty-callout"><Users size={28} /><div><h2>Build your roster first</h2><p>Add team members, then create a practice and start checking people in.</p></div><Link href="/members" className="button button-secondary">Add members<ArrowRight size={16} /></Link></section> : <section className="stat-strip" aria-label="Team attendance summary">
       <div className="stat-primary"><span className="stat-value">{data.counts.team_rate}%</span><span><strong>team attendance</strong><small>Excused absences excluded</small></span></div>
@@ -24,7 +26,7 @@ export default async function DashboardPage() {
       </section>
 
       <section className="panel"><div className="panel-head"><div><p className="eyebrow">Latest session</p><h2>{latest?.title ?? "No practices yet"}</h2></div>{latest && <Link href={`/check-in/${latest.id}`}>Open<ArrowRight size={15} /></Link>}</div>
-        {latest ? <><p className="practice-time">{formatPracticeDate(latest.starts_at)} · {latest.focus || "General practice"}</p><div className="session-meter"><span style={{ width: `${data.counts.active_members ? Math.min(100, (latest.marked / data.counts.active_members) * 100) : 0}%` }} /></div><div className="session-counts"><span><i className="dot present" />{latest.present} here</span><span><i className="dot late" />{latest.late} late</span><span><i className="dot excused" />{latest.excused} excused</span><span><i className="dot absent" />{latest.absent} absent</span></div></> : <div className="panel-empty"><CalendarPlus size={28} /><h3>Create your first practice</h3><p>Each practice becomes a permanent attendance record.</p><Link href="/practices" className="button button-secondary">Create practice</Link></div>}
+        {latest ? <><p className="practice-time">{formatPracticeDate(latest.starts_at)}</p><div className="session-meter"><span style={{ width: `${data.counts.active_members ? Math.min(100, (latest.marked / data.counts.active_members) * 100) : 0}%` }} /></div><div className="session-counts"><span><i className="dot present" />{latest.present} here</span><span><i className="dot late" />{latest.late} late</span><span><i className="dot excused" />{latest.excused} excused</span><span><i className="dot absent" />{latest.absent} absent</span></div></> : <div className="panel-empty"><CalendarPlus size={28} /><h3>Create your first practice</h3><p>Each practice becomes a permanent attendance record.</p><Link href="/practices" className="button button-secondary">Create practice</Link></div>}
       </section>
     </div>
 
@@ -33,4 +35,3 @@ export default async function DashboardPage() {
     </section>
   </div>;
 }
-

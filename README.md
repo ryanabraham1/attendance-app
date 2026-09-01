@@ -15,7 +15,7 @@ Pitboard is the lead-operated attendance app for WarriorBorgs Team 3256. Leads c
 1. Create a Supabase project.
 2. Run the SQL in `supabase/migrations/` using the Supabase SQL Editor (or link the Supabase CLI and run `supabase db push`).
 3. Copy `.env.example` to `.env.local` and fill in the four values.
-4. Optionally run `npm run db:seed` for four fictional members.
+4. Run `npm run db:seed` to sync the WarriorBorgs roster. The command is safe to rerun: it adds missing people, refreshes matching roster records, and leaves unrelated members unchanged.
 5. Run `npm run dev`.
 
 ## Production

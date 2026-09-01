@@ -7,10 +7,10 @@ import { createLeadSession, deleteLeadSession, matchesLeadCode, requireLead } fr
 import {
   createMember as insertMember,
   createPractice as insertPractice,
+  listMembers,
   savePracticeAttendance,
   setMemberActive,
 } from "@/lib/db";
-import { pacificLocalToIso } from "@/lib/format";
 import { ATTENDANCE_STATUSES } from "@/lib/types";
 
 export type LoginState = { error: string };
@@ -58,21 +58,20 @@ export async function changeMemberStatus(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
-export async function addPractice(formData: FormData) {
+export async function addPractice() {
   await requireLead();
-  const result = z.object({
-    title: z.string().trim().min(2).max(80),
-    startsAt: z.string().min(1),
-    focus: z.string().trim().max(140),
-  }).safeParse({
-    title: formData.get("title"),
-    startsAt: formData.get("startsAt"),
-    focus: formData.get("focus") ?? "",
-  });
-  if (!result.success) throw new Error("Enter a practice name and start time.");
-  const id = await insertPractice({ ...result.data, startsAt: pacificLocalToIso(result.data.startsAt) });
+  const members = await listMembers();
+  const id = await insertPractice({ title: "Practice", startsAt: new Date().toISOString(), focus: "" });
+  if (members.length) {
+    await savePracticeAttendance(id, members.map((member) => ({
+      member_id: member.id,
+      status: "present",
+      note: "",
+    })));
+  }
   revalidatePath("/dashboard");
   revalidatePath("/practices");
+  revalidatePath("/reports");
   redirect(`/check-in/${id}`);
 }
 
@@ -95,4 +94,3 @@ export async function saveAttendance(practiceId: string, payload: string) {
   revalidatePath(`/check-in/${id}`);
   return { ok: true, savedAt: new Date().toISOString() };
 }
-

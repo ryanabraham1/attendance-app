@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Check, Clock3, Save, ShieldCheck, UserX } from "lucide-react";
+import { Check, Clock3, MessageSquareText, ShieldCheck, UserX } from "lucide-react";
 import { saveAttendance } from "@/app/actions";
 import type { AttendanceEntry, AttendanceStatus, Member } from "@/lib/types";
 
@@ -19,37 +19,65 @@ export function AttendanceBoard({ practiceId, members, existing }: {
   members: Member[];
   existing: AttendanceEntry[];
 }) {
-  const initial = Object.fromEntries(members.map((member) => {
-    const saved = existing.find((entry) => entry.member_id === member.id);
-    return [member.id, { status: saved?.status ?? "unmarked", note: saved?.note ?? "" }];
-  })) as EntryState;
-  const [entries, setEntries] = useState(initial);
+  const memberNames = useMemo(() => new Map(members.map((member) => [member.id, member.name])), [members]);
+  const [entries, setEntries] = useState<EntryState>(() => {
+    const savedByMember = new Map(existing.map((entry) => [entry.member_id, entry]));
+    return Object.fromEntries(members.map((member) => {
+      const saved = savedByMember.get(member.id);
+      return [member.id, { status: saved?.status ?? "unmarked", note: saved?.note ?? "" }];
+    })) as EntryState;
+  });
   const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState(existing.length ? "Loaded saved attendance" : "Nothing saved yet");
-  const unmarked = useMemo(() => Object.values(entries).filter((entry) => entry.status === "unmarked").length, [entries]);
+  const [message, setMessage] = useState(existing.length ? "Changes save automatically" : "Tap a status to begin");
+  const unmarked = Object.values(entries).filter((entry) => entry.status === "unmarked").length;
 
   function updateStatus(memberId: string, status: AttendanceStatus) {
-    setEntries((current) => ({ ...current, [memberId]: { ...current[memberId], status } }));
-    setMessage("Unsaved changes");
+    const previous = entries[memberId];
+    const next = { ...previous, status };
+    const memberName = memberNames.get(memberId) ?? "Attendance";
+    setEntries((current) => ({ ...current, [memberId]: next }));
+    setMessage(`Saving ${memberName}…`);
+    startTransition(async () => {
+      try {
+        await saveAttendance(practiceId, JSON.stringify([{ member_id: memberId, status, note: next.note }]));
+        setMessage(`${memberName} saved`);
+      } catch {
+        setEntries((current) => current[memberId].status === status ? { ...current, [memberId]: previous } : current);
+        setMessage(`${memberName} was not saved. Tap again to retry.`);
+      }
+    });
   }
 
   function markEveryonePresent() {
-    setEntries((current) => Object.fromEntries(Object.entries(current).map(([id, entry]) => [id, { ...entry, status: "present" }])) as EntryState);
-    setMessage("Unsaved changes");
-  }
-
-  function submit() {
-    if (unmarked) {
-      setMessage(`Mark all ${unmarked} remaining member${unmarked === 1 ? "" : "s"} before saving.`);
-      return;
-    }
-    const payload = members.map((member) => ({ member_id: member.id, status: entries[member.id].status as AttendanceStatus, note: entries[member.id].note }));
+    const previous = entries;
+    const next = Object.fromEntries(Object.entries(entries).map(([id, entry]) => [id, { ...entry, status: "present" }])) as EntryState;
+    setEntries(next);
+    setMessage("Saving everyone…");
     startTransition(async () => {
       try {
-        const result = await saveAttendance(practiceId, JSON.stringify(payload));
-        setMessage(`Saved ${new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date(result.savedAt))}`);
+        await saveAttendance(practiceId, JSON.stringify(members.map((member) => ({ member_id: member.id, status: "present", note: next[member.id].note }))));
+        setMessage("Everyone is marked here");
       } catch {
-        setMessage("Attendance could not be saved. Check the connection and try again.");
+        setEntries(previous);
+        setMessage("The roster was not saved. Try again.");
+      }
+    });
+  }
+
+  function saveNote(memberId: string) {
+    const entry = entries[memberId];
+    if (entry.status === "unmarked") {
+      setMessage("Choose a status before adding a note.");
+      return;
+    }
+    const memberName = memberNames.get(memberId) ?? "Note";
+    setMessage(`Saving ${memberName}…`);
+    startTransition(async () => {
+      try {
+        await saveAttendance(practiceId, JSON.stringify([{ member_id: memberId, status: entry.status, note: entry.note }]));
+        setMessage(`${memberName} saved`);
+      } catch {
+        setMessage(`${memberName}'s note was not saved. Try again.`);
       }
     });
   }
@@ -57,13 +85,8 @@ export function AttendanceBoard({ practiceId, members, existing }: {
   return (
     <div className="attendance-board">
       <div className="board-toolbar">
-        <button type="button" className="button button-secondary" onClick={markEveryonePresent}><Check size={17} />Mark everyone here</button>
-        <div className="save-cluster">
-          <span className={unmarked ? "save-note warning" : "save-note"}>{unmarked ? `${unmarked} unmarked` : message}</span>
-          <button type="button" className="button button-primary" onClick={submit} disabled={pending || !members.length}>
-            <Save size={17} />{pending ? "Saving…" : "Save attendance"}
-          </button>
-        </div>
+        <button type="button" className="button button-secondary" onClick={markEveryonePresent} disabled={!members.length}><Check size={17} />Everyone is here</button>
+        <span className={unmarked ? "save-note warning" : "save-note"} aria-live="polite">{pending ? "Saving…" : unmarked ? `${unmarked} unmarked` : message}</span>
       </div>
       <div className="roster-list">
         {members.map((member, index) => (
@@ -80,8 +103,12 @@ export function AttendanceBoard({ practiceId, members, existing }: {
                 </button>
               ))}
             </div>
-            <input className="note-input" aria-label={`Note for ${member.name}`} placeholder="Add note…" value={entries[member.id].note}
-              onChange={(event) => { setEntries((current) => ({ ...current, [member.id]: { ...current[member.id], note: event.target.value } })); setMessage("Unsaved changes"); }} />
+            <details className="note-disclosure">
+              <summary><MessageSquareText size={15} />{entries[member.id].note ? "Edit note" : "Note"}</summary>
+              <input className="note-input" aria-label={`Note for ${member.name}`} placeholder="Optional note" value={entries[member.id].note}
+                onChange={(event) => setEntries((current) => ({ ...current, [member.id]: { ...current[member.id], note: event.target.value } }))}
+                onBlur={() => saveNote(member.id)} />
+            </details>
           </section>
         ))}
       </div>

@@ -29,7 +29,7 @@ export function LoginForm() {
       <input className="code-input" id="code" name="code" type="password" inputMode="numeric" autoComplete="current-password" required placeholder="Shared lead code" />
       {state.error && <p className="form-error" role="alert">{state.error}</p>}
       <button className="button button-primary button-wide" disabled={pending}>
-        {pending ? "Opening…" : "Open roster"}<ArrowRight aria-hidden="true" size={20} />
+        {pending ? "Opening…" : "Open check-in"}<ArrowRight aria-hidden="true" size={20} />
       </button>
     </form>
   );

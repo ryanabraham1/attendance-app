@@ -6,9 +6,10 @@ import { z } from "zod";
 import { authenticateLeadCode, createLeadSession, deleteLeadSession, requireLead, scopedGroup } from "@/lib/auth";
 import {
   createMember as insertMember,
-  createPractice as insertPractice,
+  getOrCreateTodayPractice,
   listMembers,
   savePracticeAttendance,
+  seedPracticeAttendance,
   setMemberActive,
 } from "@/lib/db";
 import { ATTENDANCE_STATUSES, LEAD_GROUPS } from "@/lib/types";
@@ -27,7 +28,7 @@ export async function login(_: LoginState, formData: FormData): Promise<LoginSta
     return { error: "That code does not match. Ask a team admin for the current code." };
   }
   await createLeadSession(session);
-  redirect("/dashboard");
+  redirect("/members");
 }
 
 export async function logout() {
@@ -71,18 +72,12 @@ export async function changeMemberStatus(formData: FormData) {
 export async function addPractice() {
   const session = await requireLead();
   const members = await listMembers(false, scopedGroup(session));
-  const id = await insertPractice({ title: "Practice", startsAt: new Date().toISOString(), focus: "" });
-  if (members.length) {
-    await savePracticeAttendance(id, members.map((member) => ({
-      member_id: member.id,
-      status: "absent",
-      note: "",
-    })));
-  }
+  const practice = await getOrCreateTodayPractice();
+  await seedPracticeAttendance(practice.id, members);
   revalidatePath("/dashboard");
   revalidatePath("/practices");
   revalidatePath("/reports");
-  redirect(`/check-in/${id}`);
+  redirect(`/check-in/${practice.id}`);
 }
 
 const attendancePayload = z.array(z.object({
@@ -109,4 +104,27 @@ export async function saveAttendance(practiceId: string, payload: string) {
   revalidatePath("/reports");
   revalidatePath(`/check-in/${id}`);
   return { ok: true, savedAt: new Date().toISOString() };
+}
+
+export async function saveTodayAttendance(payload: string) {
+  const session = await requireLead();
+  const entries = attendancePayload.parse(JSON.parse(payload));
+  if (new Set(entries.map((entry) => entry.member_id)).size !== entries.length) {
+    throw new Error("Duplicate roster entries are not allowed.");
+  }
+  const members = await listMembers(false, scopedGroup(session));
+  const allowedMemberIds = new Set(members.map((member) => member.id));
+  if (entries.some((entry) => !allowedMemberIds.has(entry.member_id))) {
+    throw new Error("You can only save attendance for active members in your subteam.");
+  }
+
+  const practice = await getOrCreateTodayPractice();
+  await seedPracticeAttendance(practice.id, members);
+  await savePracticeAttendance(practice.id, entries);
+  revalidatePath("/members");
+  revalidatePath("/dashboard");
+  revalidatePath("/practices");
+  revalidatePath("/reports");
+  revalidatePath(`/check-in/${practice.id}`);
+  return { ok: true, practiceId: practice.id, savedAt: new Date().toISOString() };
 }

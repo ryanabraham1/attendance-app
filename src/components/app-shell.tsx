@@ -1,12 +1,11 @@
 import Link from "next/link";
-import { BarChart3, CalendarDays, ClipboardCheck, LayoutDashboard, LogOut, Users } from "lucide-react";
+import { BarChart3, CalendarDays, ClipboardCheck, LogOut, Users } from "lucide-react";
 import { logout } from "@/app/actions";
 import type { LeadSession } from "@/lib/auth";
 
 const links = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard },
-  { href: "/practices", label: "Practices", icon: CalendarDays },
-  { href: "/members", label: "Members", icon: Users },
+  { href: "/members", label: "Check in", icon: Users },
+  { href: "/practices", label: "History", icon: CalendarDays },
   { href: "/reports", label: "Reports", icon: BarChart3 },
 ];
 
@@ -15,7 +14,7 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Link href="/dashboard" className="brand" aria-label="Attendance overview">
+        <Link href="/members" className="brand" aria-label="Open check-in">
           <span className="brand-mark"><ClipboardCheck size={22} /></span>
           <span><strong>ATTENDANCE</strong><small>TEAM 3256</small></span>
         </Link>

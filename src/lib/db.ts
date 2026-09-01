@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { nextDateKey, pacificDateKey, pacificLocalToIso } from "@/lib/format";
 import type { AttendanceEntry, Member, Practice } from "@/lib/types";
 
 let client: SupabaseClient | null = null;
@@ -90,6 +91,56 @@ export async function createPractice(input: { title: string; startsAt: string; f
     .select("id")
     .single();
   return resultOrThrow(result).id as string;
+}
+
+export async function getTodayPractice() {
+  const dateKey = pacificDateKey();
+  const result = await database()
+    .from("practices")
+    .select("id,title,starts_at,focus,created_at")
+    .gte("starts_at", pacificLocalToIso(`${dateKey}T00:00`))
+    .lt("starts_at", pacificLocalToIso(`${nextDateKey(dateKey)}T00:00`))
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (result.error) throw new Error(`Supabase query failed: ${result.error.message}`);
+  return result.data as Practice | null;
+}
+
+export async function getOrCreateTodayPractice() {
+  const existing = await getTodayPractice();
+  if (existing) return existing;
+
+  const startsAt = new Date().toISOString();
+  const result = await database()
+    .from("practices")
+    .insert({ title: "Practice", starts_at: startsAt, focus: "" })
+    .select("id,title,starts_at,focus,created_at")
+    .single();
+
+  // The unique Pacific-day constraint makes simultaneous first taps safe.
+  // If another device won the race, use the record it created.
+  if (result.error?.code === "23505") {
+    const raced = await getTodayPractice();
+    if (raced) return raced;
+  }
+  return resultOrThrow(result) as Practice;
+}
+
+export async function seedPracticeAttendance(practiceId: string, members: Member[]) {
+  if (!members.length) return;
+  const checkedAt = new Date().toISOString();
+  const result = await database().from("attendance").upsert(
+    members.map((member) => ({
+      practice_id: practiceId,
+      member_id: member.id,
+      status: "absent",
+      note: "",
+      checked_at: checkedAt,
+    })),
+    { onConflict: "practice_id,member_id", ignoreDuplicates: true },
+  );
+  if (result.error) throw new Error(`Could not initialize attendance: ${result.error.message}`);
 }
 
 export async function savePracticeAttendance(practiceId: string, entries: AttendanceEntry[]) {

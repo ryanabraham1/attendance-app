@@ -57,6 +57,11 @@ export async function getPractice(id: string) {
   return result.data as Practice | null;
 }
 
+export async function deletePractice(id: string) {
+  const result = await database().from("practices").delete().eq("id", id);
+  if (result.error) throw new Error(`Could not delete meeting: ${result.error.message}`);
+}
+
 export async function getAttendanceForPractice(practiceId: string, groupName?: string) {
   let query = database()
     .from("attendance")
@@ -245,6 +250,34 @@ type ReportAttendance = {
   note: string;
   practices: { title: string; starts_at: string } | null;
 };
+
+type ExportAttendance = {
+  member_id: string;
+  practice_id: string;
+  status: AttendanceEntry["status"];
+  note: string;
+  checked_at: string;
+};
+
+export async function getAttendanceExportData(groupName?: string) {
+  const db = database();
+  const [practicesResult, membersResult, attendanceResult] = await Promise.all([
+    db.from("practices").select("id,title,starts_at,focus,created_at").order("starts_at", { ascending: false }),
+    db.from("members").select("id,name,group_name,role,active,created_at").order("name"),
+    db.from("attendance").select("member_id,practice_id,status,note,checked_at"),
+  ]);
+
+  const practices = resultOrThrow(practicesResult) as Practice[];
+  const allMembers = resultOrThrow(membersResult) as Member[];
+  const members = groupName
+    ? allMembers.filter((member) => member.group_name === groupName)
+    : allMembers;
+  const memberIds = new Set(members.map((member) => member.id));
+  const attendance = (resultOrThrow(attendanceResult) as ExportAttendance[])
+    .filter((entry) => memberIds.has(entry.member_id));
+
+  return { practices, members, attendance };
+}
 
 export async function getMemberReports(groupName?: string) {
   const db = database();

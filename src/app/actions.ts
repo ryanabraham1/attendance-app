@@ -6,6 +6,8 @@ import { z } from "zod";
 import { authenticateLeadCode, createLeadSession, deleteLeadSession, requireLead, scopedGroup } from "@/lib/auth";
 import {
   createMember as insertMember,
+  deletePractice as removePractice,
+  getPractice,
   getOrCreateTodayPractice,
   listMembers,
   savePracticeAttendance,
@@ -13,6 +15,7 @@ import {
   setMemberActive,
 } from "@/lib/db";
 import { ATTENDANCE_STATUSES, LEAD_GROUPS } from "@/lib/types";
+import { pacificDateKey } from "@/lib/format";
 
 export type LoginState = { error: string };
 
@@ -78,6 +81,28 @@ export async function addPractice() {
   revalidatePath("/practices");
   revalidatePath("/reports");
   redirect(`/check-in/${practice.id}`);
+}
+
+export async function deletePastPractice(formData: FormData) {
+  const session = await requireLead();
+  if (session.role !== "admin") {
+    throw new Error("Only the all-team admin can delete meetings.");
+  }
+
+  const result = z.object({ id: z.string().uuid() }).safeParse({ id: formData.get("id") });
+  if (!result.success) throw new Error("Invalid meeting.");
+
+  const practice = await getPractice(result.data.id);
+  if (!practice) return;
+  if (pacificDateKey(practice.starts_at) >= pacificDateKey()) {
+    throw new Error("Only past meetings can be deleted.");
+  }
+
+  await removePractice(practice.id);
+  revalidatePath("/dashboard");
+  revalidatePath("/members");
+  revalidatePath("/practices");
+  revalidatePath("/reports");
 }
 
 const attendancePayload = z.array(z.object({

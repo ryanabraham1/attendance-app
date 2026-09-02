@@ -89,6 +89,11 @@ export async function setMemberActive(id: string, active: boolean) {
   if (result.error) throw new Error(`Could not update member: ${result.error.message}`);
 }
 
+export async function setMemberGroup(id: string, groupName: string) {
+  const result = await database().from("members").update({ group_name: groupName }).eq("id", id);
+  if (result.error) throw new Error(`Could not reassign member: ${result.error.message}`);
+}
+
 export async function createPractice(input: { title: string; startsAt: string; focus: string }) {
   const result = await database()
     .from("practices")

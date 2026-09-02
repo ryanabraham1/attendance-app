@@ -23,9 +23,9 @@
 html { background: var(--paper); }
 body { margin: 0; color: var(--ink); background: var(--paper); font-family: var(--font-display), sans-serif; }
 a { color: inherit; text-decoration: none; }
-button, input { font: inherit; }
+button, input, select { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
-button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visible { outline: 3px solid #9877ea; outline-offset: 2px; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #9877ea; outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 
 .eyebrow { display: flex; align-items: center; gap: .42rem; margin: 0 0 .6rem; color: var(--purple); font: 600 .7rem/1 var(--font-mono), monospace; letter-spacing: .12em; text-transform: uppercase; }
@@ -154,12 +154,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 .stack-form { display: grid; gap: 1rem; margin-top: 1.3rem; }
 .stack-form label { display: grid; gap: .45rem; font-size: .78rem; font-weight: 650; }
 .stack-form label small { color: var(--muted); font-weight: 500; }
-.stack-form input, .note-input { width: 100%; min-height: 2.75rem; border: 1px solid var(--line); border-radius: .55rem; padding: .7rem .75rem; background: var(--paper); color: var(--ink); outline: none; }
-.stack-form input:focus, .note-input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
+.stack-form input, .stack-form select, .note-input { width: 100%; min-height: 2.75rem; border: 1px solid var(--line); border-radius: .55rem; padding: .7rem .75rem; background: var(--paper); color: var(--ink); outline: none; }
+.stack-form input:focus, .stack-form select:focus, .note-input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px var(--purple-soft); }
 .member-list { margin-top: .6rem; }
-.member-list article { grid-template-columns: 2.25rem 1fr auto; }
+.member-list article { min-height: 4rem; display: grid; grid-template-columns: minmax(190px, 1fr) auto auto; align-items: center; gap: .8rem; padding: .65rem 0; border-top: 1px solid #ececf1; }
+.member-list article:first-child { border-top: 0; }
 .member-list article.inactive { opacity: .52; }
-.icon-text-button { border: 0; background: none; color: var(--muted); display: flex; align-items: center; gap: .35rem; cursor: pointer; font-size: .7rem; }
+.member-identity { min-width: 0; display: flex; align-items: center; gap: .7rem; }
+.member-identity > div { min-width: 0; display: grid; gap: .2rem; }
+.member-identity strong, .member-identity small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-identity small { color: var(--muted); font-size: .68rem; }
+.group-assignment-form { display: flex; align-items: center; gap: .4rem; }
+.group-assignment-form select { min-height: 2.35rem; border: 1px solid var(--line); border-radius: .5rem; padding: .45rem 1.8rem .45rem .65rem; color: var(--ink); background: var(--paper); cursor: pointer; }
+.group-save-button { min-height: 2.35rem; border: 1px solid #cbbbea; border-radius: .5rem; padding: .45rem .62rem; display: inline-flex; align-items: center; gap: .3rem; color: var(--purple-dark); background: var(--purple-soft); cursor: pointer; font-size: .68rem; font-weight: 650; }
+.group-save-button:disabled, .icon-text-button:disabled { cursor: wait; opacity: .55; }
+.icon-text-button { min-height: 2.35rem; border: 0; border-radius: .5rem; padding: .45rem .55rem; background: none; color: var(--muted); display: flex; align-items: center; gap: .35rem; cursor: pointer; font-size: .7rem; }
+.icon-text-button.remove:hover { color: var(--absent); background: var(--absent-soft); }
+.icon-text-button.restore { color: var(--present); }
+.roster-footnote { margin: .8rem 0 0; padding-top: .8rem; border-top: 1px solid #ececf1; color: var(--muted); font-size: .68rem; line-height: 1.45; }
 .today-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 2rem; }
 .today-header > div:first-child { max-width: 720px; }
 .today-header strong { color: var(--ink); }
@@ -261,7 +273,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
 
 /* Mobile is the shop-floor view: large targets, fast scanning, one-handed use. */
 @media (max-width: 760px) {
-  button, input, summary, a { touch-action: manipulation; }
+  button, input, select, summary, a { touch-action: manipulation; }
   .button { min-height: 3.5rem; border-radius: .78rem; padding: .85rem 1rem; font-size: .92rem; }
 
   .login-page { padding: 1rem; }
@@ -291,14 +303,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, summary:focus-visibl
   .start-practice-button { min-height: 3.75rem; font-size: 1rem; }
   .stack-form { gap: 1.1rem; }
   .stack-form label { gap: .55rem; font-size: .86rem; }
-  .stack-form input, .note-input { min-height: 3.55rem; border-radius: .7rem; padding: .8rem .9rem; font-size: 1rem; }
+  .stack-form input, .stack-form select, .note-input { min-height: 3.55rem; border-radius: .7rem; padding: .8rem .9rem; font-size: 1rem; }
   .practice-list article { align-items: stretch; flex-direction: column; gap: 0; padding: .6rem 0; }
   .practice-list article > a { width: 100%; min-height: 4.75rem; padding: .15rem 0; }
   .practice-list article form, .practice-delete-button { width: 100%; }
   .practice-delete-confirm { display: grid; grid-template-columns: 1fr auto; }
   .practice-delete-button { min-height: 3.25rem; justify-content: center; }
   .practice-delete-cancel { min-height: 3.25rem; }
-  .member-list article { min-height: 4.6rem; }
+  .member-list article { min-height: 4.6rem; grid-template-columns: 1fr auto; gap: .65rem; }
+  .member-identity { grid-column: 1 / -1; }
+  .group-assignment-form { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr auto; }
+  .group-assignment-form select, .group-save-button { min-height: 3rem; }
+  .member-status-form { justify-self: end; grid-column: 2; }
   .icon-text-button { min-height: 2.75rem; padding: .55rem; font-size: .78rem; }
 
   .checkin-page .page-header { margin-bottom: 1rem; }

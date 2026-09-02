@@ -13,8 +13,9 @@ import {
   savePracticeAttendance,
   seedPracticeAttendance,
   setMemberActive,
+  setMemberGroup,
 } from "@/lib/db";
-import { ATTENDANCE_STATUSES, LEAD_GROUPS } from "@/lib/types";
+import { ATTENDANCE_STATUSES, LEAD_GROUPS, ROSTER_GROUPS } from "@/lib/types";
 import { pacificDateKey } from "@/lib/format";
 
 export type LoginState = { error: string };
@@ -43,7 +44,7 @@ export async function addMember(formData: FormData) {
   const session = await requireLead();
   const result = z.object({
     name: z.string().trim().min(2).max(80),
-    group: z.string().trim().min(2).max(60),
+    group: z.enum(ROSTER_GROUPS),
     role: z.string().trim().min(2).max(60),
   }).safeParse({
     name: formData.get("name"),
@@ -70,6 +71,29 @@ export async function changeMemberStatus(formData: FormData) {
   await setMemberActive(result.data.id, result.data.active === "true");
   revalidatePath("/members");
   revalidatePath("/dashboard");
+}
+
+export async function changeMemberGroup(formData: FormData) {
+  const session = await requireLead();
+  if (session.role !== "admin") {
+    throw new Error("Only the all-team admin can reassign members.");
+  }
+
+  const result = z.object({
+    id: z.string().uuid(),
+    group: z.enum(ROSTER_GROUPS),
+  }).safeParse({ id: formData.get("id"), group: formData.get("group") });
+  if (!result.success) throw new Error("Choose a valid member and group.");
+
+  const members = await listMembers(true);
+  if (!members.some((member) => member.id === result.data.id)) {
+    throw new Error("That member is not on the roster.");
+  }
+
+  await setMemberGroup(result.data.id, result.data.group);
+  revalidatePath("/members");
+  revalidatePath("/dashboard");
+  revalidatePath("/reports");
 }
 
 export async function addPractice() {
